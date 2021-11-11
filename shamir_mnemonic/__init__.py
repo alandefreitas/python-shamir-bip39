@@ -11,6 +11,7 @@ from .shamir import (
 )
 from .share import Share
 from .utils import MnemonicError
+from .mnemonic import Mnemonic
 
 __all__ = [
     "encrypt",
@@ -23,4 +24,5 @@ __all__ = [
     "EncryptedMasterSecret",
     "MnemonicError",
     "Share",
+    "Mnemonic",
 ]

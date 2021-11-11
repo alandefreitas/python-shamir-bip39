@@ -12,7 +12,7 @@ from .recovery import RecoveryState
 from .shamir import combine_mnemonics, generate_mnemonics
 from .share import Share
 from .utils import MnemonicError
-
+from .mnemonic import Mnemonic
 
 @click.group()
 def cli() -> None:
@@ -43,6 +43,9 @@ def cli() -> None:
 @click.option(
     "-S", "--master-secret", help="Hex-encoded custom master secret.", metavar="HEX"
 )
+@click.option(
+    "-M", "--mnemonics", help="Mnemonics word list.", metavar="HEX"
+)
 @click.option("-p", "--passphrase", help="Supply passphrase for recovery.")
 def create(
     scheme: str,
@@ -50,6 +53,7 @@ def create(
     group_threshold: int,
     exponent: int,
     master_secret: str,
+    mnemonics: str,
     passphrase: str,
     strength: int,
 ) -> None:
@@ -67,9 +71,14 @@ def create(
     custom: Specify configuration with -t and -g options.
     """
     if passphrase and not master_secret:
-        raise click.ClickException(
-            "Only use passphrase in conjunction with an explicit master secret"
-        )
+        if not mnemonics:
+            raise click.ClickException(
+                "Only use passphrase in conjunction with an explicit master secret"
+            )
+        else:
+            raise click.ClickException(
+                "The passphrase option is not available for mnemonics"
+            )
 
     if (groups or group_threshold is not None) and scheme != "custom":
         raise click.BadArgumentUsage(f"To use -g/-t, you must select 'custom' scheme.")
@@ -104,15 +113,44 @@ def create(
         click.echo("Instead, set up a 1-of-1 group and give everyone the same share.")
         sys.exit(1)
 
+    mnemo = Mnemonic("english")
+    if mnemonics is not None and master_secret is not None:
+        try:
+            master_secret_secret_bytes = bytes.fromhex(master_secret)
+            mnemonics_secret_bytes = mnemo.to_entropy(mnemonics)
+            if master_secret_secret_bytes != mnemonics_secret_bytes:
+                raise click.BadOptionUsage(
+                    "master_secret", f"Secret bytes do not match the mnemonics"
+                )
+            else:
+                secret_bytes = bytes.fromhex(master_secret)
+        except Exception as e:
+            raise click.BadOptionUsage(
+                "master_secret", f"Secret bytes must be hex encoded"
+            ) from e
+    if mnemonics is not None:
+        try:
+            secret_bytes = mnemo.to_entropy(mnemonics)
+            master_secret = secret_bytes.hex()
+        except Exception as e:
+            raise click.BadOptionUsage(
+                "master_secret", f"Word list cannot be converted to entropy. Are you sure this is a BIP39 word list?"
+            ) from e
     if master_secret is not None:
         try:
             secret_bytes = bytes.fromhex(master_secret)
+            mnemonics = mnemo.to_mnemonic(secret_bytes)
         except Exception as e:
             raise click.BadOptionUsage(
                 "master_secret", f"Secret bytes must be hex encoded"
             ) from e
     else:
         secret_bytes = secrets.token_bytes(strength // 8)
+        master_secret = secret_bytes.hex()
+        mnemonics = mnemo.to_mnemonic(secret_bytes)
+
+    secret_words = style(mnemonics, bold=True)
+    click.echo(f"Using master secret mnemonics: {secret_words}")
 
     secret_hex = style(secret_bytes.hex(), bold=True)
     click.echo(f"Using master secret: {secret_hex}")
@@ -212,12 +250,15 @@ def recover(passphrase_prompt: bool) -> None:
 
     try:
         master_secret = recovery_state.recover(passphrase_bytes)
+        mnemo = Mnemonic("english")
+        mnemonics = mnemo.to_mnemonic(master_secret)
     except MnemonicError as e:
         error(str(e))
         click.echo("Recovery failed")
         sys.exit(1)
     click.secho("SUCCESS!", fg="green", bold=True)
     click.echo(f"Your master secret is: {master_secret.hex()}")
+    click.echo(f"Your mnemonic is: {mnemonics}")
 
 
 if __name__ == "__main__":
