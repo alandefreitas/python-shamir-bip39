@@ -19,7 +19,7 @@ setup(
     description="SLIP-39 Shamir Mnemonics",
     long_description="\n".join(
         (
-            (CWD / "README.rst").read_text(),
+            (CWD / "README.md").read_text(),
             (CWD / "CHANGELOG.rst").read_text(),
         )
     ),
